@@ -1,0 +1,242 @@
+---
+title: "Practical Machine Learning Course Activity Recognition Project Report"
+output:
+  md_document:
+    variant: markdown_github
+  html_document:
+    highlight: zenburn
+    theme: paper
+    toc: yes
+    toc_float:
+      collapsed: no
+      smooth_scroll: no
+---
+
+Practical Machine Learning Course Activity Recognition Project Report
+====================================================================
+
+This document is a write up of the assignment for [Practical Machine Learning MOOC offered by John Hopkins University](https://www.coursera.org/learn/practical-machine-learning) on Coursera.
+
+# Problem Statement
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [link](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har) (see the section on the Weight Lifting Exercise Dataset).
+
+# Aim of the project
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+
+# Data
+
+The training data for this project are available here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+The test data are available here:
+
+[https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+
+The data for this project come from this source: [http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har](http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har). If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+# Reproducibility
+
+To produce the same results by following this notebook. you need to set the seed as given below.
+
+```{r warning=FALSE, error=FALSE}
+set.seed(24323)
+```
+
+Also I use the following libraries for this project, which you will have to install inorder to attain the same results
+
+```{r warning=FALSE, error=FALSE}
+library(rattle)
+library(caret)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(RColorBrewer)
+```
+
+# Load data
+
+Download the dataset and then create partitions, of training dataset (containing 70% of the data) and test set (with 30% of the data). 
+
+```{r warning=FALSE, error=FALSE}
+setwd("~/practical-machine-learning/")
+trainDataURL <-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testDataURL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the data
+trainData <- read.csv(url(trainDataURL))
+testData <- read.csv(url(testDataURL))
+
+# create partition
+inTrain <- createDataPartition(trainData$classe, p=0.7, list=FALSE)
+trainSet <- trainData[inTrain, ]
+testSet <- trainData[-inTrain, ]
+
+dim(trainSet)
+```
+
+
+```{r warning=FALSE, error=FALSE}
+dim(testSet)
+```
+
+From above we can see that, the dataset has 160 variables in total. Before further continuing with exploration of data, we have to clean the data.
+
+
+# Cleaning data
+
+This step is required to clean the dataset by eliminating any observations with missing values as well as variables which are not important
+
+Near Zero Variance(NZV) variables are removed as follows:
+
+```{r warning=FALSE, error=FALSE}
+# find all NZV
+NZV <- nearZeroVar(trainSet)
+# remove them from the datasets
+trainSet <- trainSet[,-NZV]
+testSet <- testSet[,-NZV]
+
+```
+
+
+```{r warning=FALSE, error=FALSE}
+dim(trainSet)
+```
+
+
+```{r warning=FALSE, error=FALSE}
+dim(testSet)
+```
+
+Now remove variables that contain mostly NA values
+
+
+```{r warning=FALSE, error=FALSE}
+#get all na
+naVals <- sapply(trainSet, function(val) mean(is.na(val))) > 0.95
+#remove all na
+trainSet <- trainSet[, naVals==FALSE]
+testSet <- testSet[, naVals==FALSE]
+dim(trainSet)
+```
+
+
+
+```{r warning=FALSE, error=FALSE}
+dim(testSet)
+```
+
+Remove id variables i.e from column 1 to 5
+
+
+```{r warning=FALSE, error=FALSE}
+trainSet <- trainSet[, -(1:5)]
+testSet <- testSet[, -(1:5)]
+dim(trainSet)
+```
+
+
+
+```{r warning=FALSE, error=FALSE}
+dim(testSet)
+```
+
+So, now our cleaned data consists of 54 variables for analysis. Lets proceed to exploration analysis.
+
+# Exploration Analysis
+
+Before modeling, we need to find out if there is any interesting pattern among data or any correlation that is already existing. We shall use corrplot to plot correlation among variables.
+
+
+```{r warning=FALSE, error=FALSE}
+# cor of 54 variables of trainSet
+corrMatrix <- cor(trainSet[, -54])
+corrplot(corrMatrix, method = "color", tl.cex = 0.5)
+```
+
+From the above diagram we can see that few of the variables are correlated, referring to the dark spots in the plot. We can observe both positive and negative correlations from the plot above.
+
+Lets proceed to the modelling part of data.
+
+# Building Prediction Model
+
+For building a prediction model, we are going to apply three algorithms seperately and measure the accuracies against the test dataset. We shall elect the one which has the best accuracy. The algorithms that we are going to try are: Decision trees, Random Forests and Generalized Boost Model.
+
+### Decision trees
+```{r warning=FALSE, error=FALSE}
+# using rpart from rpart library
+dtModel <- rpart(classe ~ ., data=trainSet, method="class")
+# lets plot the dtModel
+fancyRpartPlot(dtModel)
+```
+
+Lets perform prediction on the test set using the decision tree model
+
+```{r warning=FALSE, error=FALSE}
+dtPrediction <- predict(dtModel, newdata=testSet, type="class")
+# create confustion matrix for predicted and actual values
+dtConfMat <- confusionMatrix(dtPrediction, testSet$classe)
+dtConfMat
+```
+
+Visualize the confusion matrix results for ease of understanding
+```{r warning=FALSE, error=FALSE}
+plot(dtConfMat$table, col = dtConfMat$byClass, main = paste("DT Model Accuracy: ",round(dtConfMat$overall['Accuracy'], 4)))
+```
+
+### Random Forest analysis
+```{r warning=FALSE, error=FALSE}
+# using the trainControl method from caret library
+rfCtrl <- trainControl(method="cv", number = 3, verboseIter = FALSE)
+rfModel <- train(classe ~ ., data=trainSet, method="rf", trControl=rfCtrl)
+rfModel$finalModel
+```
+
+Now perform prediction on test dataset and then create confusion matrix
+```{r warning=FALSE, error=FALSE}
+# do prediction on testSet
+rfPrediction <- predict(rfModel, newdata = testSet)
+# create confusion matrix
+rfConfMat <- confusionMatrix(rfPrediction, testSet$classe)
+rfConfMat
+```
+
+Lets plot the matrix results for ease of understanding
+```{r warning=FALSE, error=FALSE}
+plot( rfConfMat$table, col = rfConfMat$byClass, main=paste("RF Model Accuracy: ", round(rfConfMat$overall['Accuracy'], 4) ))
+```
+
+Random Forest model beats Decision Tree model by a great margin. Now, lets continue and apply the GB model.
+
+### Generalized Boost Model
+```{r warning=FALSE, error=FALSE}
+gbmCtrl <- trainControl(method="repeatedcv", number=5, repeats = 1)
+gbModel <- train(classe ~ ., data = trainSet, method="gbm", trControl = gbmCtrl, verbose=FALSE)
+gbModel$finalModel
+```
+Now lets apply test dataset for prediction and create confusion matrix and then find out the accuracy.
+
+```{r warning=FALSE, error=FALSE}
+gbmPrediction <- predict(gbModel, newdata=testSet)
+#create confusion matrix
+gbmConfMat <- confusionMatrix(gbmPrediction, testSet$classe)
+gbmConfMat
+```
+
+Now lets visualize the matrix results for ease of understanding
+```{r warning=FALSE, error=FALSE}
+plot(gbmConfMat$table, col = gbmConfMat$byClass, main=paste("GBM Accuracy: ", round(gbmConfMat$overall['Accuracy'],4)))
+```
+
+Although Generalized Boost Model outperformed the Decision Tree Model, it is still less accurate than the Random Forest Model by a little margin. Therefore, we shall continue building our final model using `Random Forest Model`
+
+# Final Model Applied on Test Data
+The winner of the above model analysis i.e `Random Forest Model` will be used to predict the 20 quiz results
+```{r warning=FALSE, error=FALSE}
+predictions <- predict(rfModel, newdata = testData)
+predictions
+```
